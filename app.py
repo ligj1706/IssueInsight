@@ -12,7 +12,7 @@ import re
 import json
 import logging
 
-# 设置日志
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -20,17 +20,17 @@ class GitHubAPI:
     def __init__(self, token: str = None):
         self.session = requests.Session()
         
-        # 配置重试策略
+        # Configure retry strategy
         retry_strategy = Retry(
-            total=3,  # 最多重试3次
-            backoff_factor=1,  # 重试间隔
-            status_forcelist=[429, 500, 502, 503, 504],  # 需要重试的HTTP状态码
+            total=3,  # Maximum number of retries
+            backoff_factor=1,  # Retry interval
+            status_forcelist=[429, 500, 502, 503, 504],  # HTTP status codes to retry
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("https://", adapter)
         self.session.mount("http://", adapter)
         
-        # 设置默认headers
+        # Set default headers
         self.session.headers.update({
             "Accept": "application/vnd.github.v3+json",
             "Authorization": f"token {token}" if token else None,
@@ -38,7 +38,7 @@ class GitHubAPI:
         })
 
     def get(self, url: str, params: Dict = None) -> Dict:
-        """执行GET请求并处理错误"""
+        """Execute GET request and handle errors"""
         try:
             response = self.session.get(url, params=params)
             response.raise_for_status()
@@ -49,17 +49,16 @@ class GitHubAPI:
 
 class GitHubAnalyzer:
     def __init__(self, owner: str, repo: str, token: str = None):
-        """初始化分析器"""
+        """Initialize analyzer with repository information"""
         self.owner = owner
         self.repo = repo
         self.api = GitHubAPI(token)
         self.base_url = f"https://api.github.com/repos/{owner}/{repo}"
 
     def get_issues(self) -> List[Dict]:
-        """获取所有issues"""
+        """Fetch all issues from the repository"""
         issues = []
         page = 1
-        
         while True:
             try:
                 url = f"{self.base_url}/issues"
@@ -75,7 +74,7 @@ class GitHubAnalyzer:
                 if not response:
                     break
                     
-                # 过滤出真正的issues（排除PRs）
+                # Filter out pull requests
                 real_issues = [issue for issue in response if "pull_request" not in issue]
                 issues.extend(real_issues)
                 
@@ -85,7 +84,7 @@ class GitHubAnalyzer:
                     break
                     
                 page += 1
-                time.sleep(1)  # 避免触发限制
+                time.sleep(1)  # Avoid hitting rate limits
                 
             except Exception as e:
                 logger.error(f"Error fetching issues: {str(e)}")
@@ -94,14 +93,17 @@ class GitHubAnalyzer:
         return issues
 
     def analyze_issues(self, issues: List[Dict]) -> Dict:
-        """分析issues数据"""
+        """Analyze issues and generate insights"""
         try:
-            # 基础统计
+            # Basic statistics
             total_issues = len(issues)
             open_issues = len([i for i in issues if i["state"] == "open"])
             closed_issues = total_issues - open_issues
             
-            # 计算响应时间
+            # Calculate resolution rate
+            resolution_rate = (closed_issues / total_issues * 100) if total_issues > 0 else 0
+            
+            # Response time analysis
             response_times = []
             for issue in issues:
                 if issue["closed_at"]:
@@ -109,19 +111,19 @@ class GitHubAnalyzer:
                     closed = datetime.strptime(issue["closed_at"], "%Y-%m-%dT%H:%M:%SZ")
                     response_times.append((closed - created).total_seconds() / 3600)
             
-            # 时间分布
+            # Time-based analysis
             created_times = [
                 datetime.strptime(issue["created_at"], "%Y-%m-%dT%H:%M:%SZ")
                 for issue in issues
             ]
             
-            # 按月统计
+            # Monthly statistics
             monthly_counts = {}
             for dt in created_times:
                 month_key = dt.strftime("%Y-%m")
                 monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
             
-            # 计算增长率
+            # Calculate growth rate
             sorted_months = sorted(monthly_counts.keys())
             if len(sorted_months) >= 2:
                 current_month = monthly_counts[sorted_months[-1]]
@@ -130,25 +132,25 @@ class GitHubAnalyzer:
             else:
                 growth_rate = 0
             
-            # 统计标签
+            # Label analysis
             labels = []
             for issue in issues:
                 labels.extend([label["name"] for label in issue["labels"]])
             label_counts = Counter(labels)
             
-            # 提取关键词
+            # Extract keywords from titles and bodies
             titles = [issue["title"] for issue in issues]
             descriptions = [issue.get("body", "") for issue in issues]
             
-            # 简单的关键词提取（可以根据需要改进）
+            # Simple keyword extraction (can be improved)
             words = []
             for text in titles + descriptions:
                 if text:
-                    # 移除特殊字符，分割成单词
+                    # Remove special characters, split into words
                     cleaned = re.sub(r'[^\w\s]', ' ', text.lower())
                     words.extend(cleaned.split())
             
-            # 过滤掉常见词和空字符串
+            # Filter out common words and empty strings
             common_words = {'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'}
             filtered_words = [word for word in words if word and word not in common_words and len(word) > 2]
             word_counts = Counter(filtered_words)
@@ -200,7 +202,7 @@ class GitHubAnalyzer:
             raise
 
     def _calculate_time_distribution(self, times: List[float]) -> Dict[str, int]:
-        """计算时间分布"""
+        """Calculate time distribution"""
         if not times:
             return {}
             
@@ -211,14 +213,14 @@ class GitHubAnalyzer:
         return dict(zip(labels, hist.tolist()))
 
     def _calculate_weekly_pattern(self, times: List[datetime]) -> List[int]:
-        """计算每周各天的活动分布"""
+        """Calculate weekly activity pattern"""
         if not times:
             return [0] * 7
             
-        # 统计每个工作日的数量（0=周一，6=周日）
+        # Count activity by day of the week
         weekday_counts = [0] * 7
         for dt in times:
-            # datetime的weekday()返回0-6，其中0是周一
+            # datetime's weekday() returns 0-6, where 0 is Monday
             weekday_counts[dt.weekday()] += 1
             
         return weekday_counts
@@ -227,12 +229,12 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
-    """渲染主页"""
+    """Render the main dashboard page"""
     return render_template('index.html')
 
 @app.route('/analyze', methods=['POST'])
 def analyze():
-    """分析仓库"""
+    """Analyze GitHub repository issues"""
     try:
         data = request.get_json()
         if not data:
@@ -244,15 +246,15 @@ def analyze():
         if not github_url or not token:
             return jsonify({"error": "Missing required parameters"}), 400
             
-        # 提取owner和repo
+        # Extract owner and repo from URL
         match = re.match(r'https?://github\.com/([^/]+)/([^/]+)', github_url)
         if not match:
-            return jsonify({"error": "Invalid GitHub URL"}), 400
+            return jsonify({"error": "Invalid GitHub repository URL"}), 400
             
         owner, repo = match.groups()
-        repo = repo.replace('.git', '').split('/')[0]  # 移除.git和其他路径
+        repo = repo.replace('.git', '').split('/')[0]  # Remove .git and other paths
         
-        # 验证token
+        # Validate token
         try:
             test_url = f"https://api.github.com/user"
             headers = {"Authorization": f"token {token}"}
@@ -261,7 +263,7 @@ def analyze():
         except Exception as e:
             return jsonify({"error": "Invalid GitHub token"}), 401
         
-        # 执行分析
+        # Analyze issues
         analyzer = GitHubAnalyzer(owner, repo, token)
         issues = analyzer.get_issues()
         
@@ -276,4 +278,8 @@ def analyze():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
+    # For local development
     app.run(debug=True)
+else:
+    # For Vercel deployment
+    app = app
