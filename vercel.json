@@ -1,15 +1,21 @@
 {
     "version": 2,
     "builds": [
-        {
-            "src": "app.py",
-            "use": "@vercel/python"
-        }
+      {
+        "src": "app.py",
+        "use": "@vercel/python"
+      }
     ],
     "routes": [
-        {
-            "src": "/(.*)",
-            "dest": "app.py"
-        }
-    ]
-}
+      {
+        "src": "/(.*)",
+        "dest": "app.py"
+      }
+    ],
+    "build": {
+      "env": {
+        "PRE_BUILD_COMMAND": "apt-get update && apt-get install -y python3-distutils",
+        "BUILD_COMMAND": "pip install -r requirements.txt"
+      }
+    }
+  }
