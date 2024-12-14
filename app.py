@@ -11,6 +11,10 @@ from typing import Dict, List, Any
 import re
 import json
 import logging
+import os
+import shutil
+import sys
+from flask_frozen import Freezer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -226,6 +230,7 @@ class GitHubAnalyzer:
         return weekday_counts
 
 app = Flask(__name__)
+freezer = Freezer(app)
 
 @app.route('/')
 def index():
@@ -278,8 +283,16 @@ def analyze():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # For local development
-    app.run(debug=True)
-else:
-    # For Vercel deployment
-    app = app
+    if len(sys.argv) > 1 and sys.argv[1] == 'build':
+        # 创建 build 目录
+        if os.path.exists('build'):
+            shutil.rmtree('build')
+        os.makedirs('build')
+        
+        # 冻结 Flask 应用为静态文件
+        freezer.freeze()
+        
+        print("静态文件已生成到 build 目录")
+    else:
+        # 正常运行 Flask 应用
+        app.run(debug=True)
