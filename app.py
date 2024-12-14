@@ -237,10 +237,14 @@ def index():
     """Render the main dashboard page"""
     return render_template('index.html')
 
-@app.route('/analyze', methods=['POST'])
+@app.route('/analyze', methods=['POST', 'GET'])
 def analyze():
     """Analyze GitHub repository issues"""
     try:
+        # 如果是在生成静态文件时
+        if request.method == 'GET':
+            return jsonify({"message": "This endpoint accepts POST requests"}), 200
+            
         data = request.get_json()
         if not data:
             return jsonify({"error": "No data provided"}), 400
